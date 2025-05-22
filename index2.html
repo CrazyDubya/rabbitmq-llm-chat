@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LLM Processing</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: #ffffff;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .input-group {
+            margin-bottom: 10px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input[type="text"],
+        input[type="number"],
+        select,
+        textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+            background-color: #333333;
+            color: #ffffff;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #output {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #333333;
+            border-radius: 4px;
+        }
+        .token-count {
+            margin-top: 10px;
+            font-size: 14px;
+        }
+    </style>
+<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const modelData = {
+            "claude-3": {
+                "haiku": {
+                    "name": "claude-3-haiku-20240307",
+                    "cost": "$"
+                },
+                "sonnet": {
+                    "name": "claude-3-sonnet-20240229",
+                    "cost": "$$"
+                },
+                "opus": {
+                    "name": "claude-3-opus-20240229",
+                    "cost": "$$$$"
+                }
+            },
+            "monster": {
+                "falcon-7b-instruct": {
+                    "name": "falcon-7b-instruct",
+                    "cost": "$$"
+                },
+                "falcon-40b-instruct": {
+                    "name": "falcon-40b-instruct",
+                    "cost": "$$$$"
+                },
+                "mpt-7b-instruct": {
+                    "name": "mpt-7b-instruct",
+                    "cost": "$$"
+                }
+            },
+            "openai": {
+                "gpt-3.5-turbo-0125": {
+                    "name": "gpt-3.5-turbo-0125",
+                    "cost": "$$$"
+                }
+            },
+            "perplexity": {
+                "codellama-70b-instruct": {
+                    "name": "codellama-70b-instruct",
+                    "cost": "$$$$$",
+                    "input_price_per_million": 0.0,
+                    "output_price_per_million": 0.0
+                },
+                "mistral-7b-instruct": {
+                    "name": "mistral-7b-instruct",
+                    "cost": "$$$",
+                    "input_price_per_million": 0.0,
+                    "output_price_per_million": 0.0
+                },
+                "mixtral-8x7b-instruct": {
+                    "name": "mixtral-8x7b-instruct",
+                    "cost": "$$$$",
+                    "input_price_per_million": 0.0,
+                    "output_price_per_million": 0.0
+                }
+            },
+            "local": {
+                "mixtral-8x7b-local": {
+                    "name": "mixtral-8x7b-local",
+                    "cost": "$",
+                    "port": 8080
+                },
+                "WizardCoder-17b": {
+                    "name": "WizardCoder-17b",
+                    "cost": "$",
+                    "port": 8081
+                }
+            },
+            "gemini": {
+                "gemini-pro": {
+                    "name": "gemini-pro",
+                    "cost": "$$$"
+                },
+                "gemini-pro-vision": {
+                    "name": "gemini-pro-vision",
+                    "cost": "$$$$"
+                }
+            }
+        };
+
+
+            function populateSelects() {
+                // Populate Model Type Dropdowns
+                const modelTypeSelect1 = document.getElementById('model-type-1');
+                const modelTypeSelect2 = document.getElementById('model-type-2');
+
+                Object.keys(modelData).forEach((modelTypeKey) => {
+                    const modelTypeOption1 = new Option(modelTypeKey.replace('_', ' ').replace('MODELS', '').trim(), modelTypeKey);
+                    const modelTypeOption2 = new Option(modelTypeKey.replace('_', ' ').replace('MODELS', '').trim(), modelTypeKey);
+                    modelTypeSelect1.add(modelTypeOption1);
+                    modelTypeSelect2.add(modelTypeOption2);
+                });
+
+                // Initially populate Model Name Dropdowns based on first selection in Model Type Dropdowns
+                populateModelNames('model-type-1', 'model-name-1');
+                populateModelNames('model-type-2', 'model-name-2');
+
+                // Add change event listeners to Model Type Dropdowns to update Model Name Dropdowns
+                document.getElementById('model-type-1').addEventListener('change', function() {
+                    populateModelNames('model-type-1', 'model-name-1');
+                });
+                document.getElementById('model-type-2').addEventListener('change', function() {
+                    populateModelNames('model-type-2', 'model-name-2');
+                });
+            }
+
+            function populateModelNames(modelTypeSelectId, modelNameSelectId) {
+                const modelTypeSelect = document.getElementById(modelTypeSelectId);
+                const modelNameSelect = document.getElementById(modelNameSelectId);
+                const selectedModelTypeKey = modelTypeSelect.value;
+                const models = modelData[selectedModelTypeKey];
+
+                // Clear existing options
+                modelNameSelect.innerHTML = '';
+
+                // Populate Model Name Dropdown
+                Object.entries(models).forEach(([modelKey, modelInfo]) => {
+                    const option = new Option(`${modelInfo.name} (${modelInfo.cost})`, modelKey);
+                    modelNameSelect.add(option);
+                });
+            }
+
+populateSelects(); // Call the function to populate the dropdowns
+
+document.getElementById('processButton').addEventListener('click', processInput);
+
+async function processInput() {
+    const prompt = document.getElementById('prompt').value;
+    const iterations = parseInt(document.getElementById('iterations').value);
+    const modelType1 = document.getElementById('model-type-1').value;
+    const modelName1 = document.getElementById('model-name-1').value;
+    const temperature1 = parseFloat(document.getElementById('temperature-1').value);
+    const maxTokens1 = parseInt(document.getElementById('max-tokens-1').value);
+    const modelType2 = document.getElementById('model-type-2').value;
+    const modelName2 = document.getElementById('model-name-2').value;
+    const temperature2 = parseFloat(document.getElementById('temperature-2').value);
+    const maxTokens2 = parseInt(document.getElementById('max-tokens-2').value);
+
+    try {
+        const response = await axios.post('http://localhost:8000/process', {
+            prompt,
+            iterations,
+            llm_model_type_1: modelType1,
+            llm_model_name_1: modelName1,
+            temperature_1: temperature1,
+            max_tokens_1: maxTokens1,
+            llm_model_type_2: modelType2,
+            llm_model_name_2: modelName2,
+            temperature_2: temperature2,
+            max_tokens_2: maxTokens2
+        });
+
+        const { output, input_tokens, output_tokens } = response.data;
+        document.getElementById('output').innerHTML = output;
+        document.getElementById('input-tokens').textContent = input_tokens;
+        document.getElementById('output-tokens').textContent = output_tokens;
+
+        // Check if there are questions for the user
+        const questionsMatch = output.match(/<questions_for_user>(.*?)<\/questions_for_user>/s);
+        if (questionsMatch) {
+            const questions = questionsMatch[1].trim().split('\n');
+            displayQuestionsForUser(questions);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+    }
+}
+
+document.getElementById('submitResponseButton').addEventListener('click', () => {
+    const userResponse = document.getElementById('userResponse').value;
+    console.log('User response:', userResponse);
+    // You can perform further actions with the user's response here
+    document.getElementById('questionsBox').style.display = 'none';
+});
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>LLM Processing</h1>
+        <div class="input-group">
+            <label for="prompt">Prompt:</label>
+            <textarea id="prompt" rows="6" cols="50"></textarea>
+        </div>
+        <div class="input-group">
+            <label for="iterations">Iterations:</label>
+            <input type="number" id="iterations" min="1" max="10" value="1">
+        </div>
+        <div class="input-group">
+             <label for="model-type-1">Model Type 1:</label>
+             <select id="model-type-1"></select>
+        </div>
+        <div class="input-group">
+            <label for="model-name-1">Model Name 1:</label>
+            <select id="model-name-1"></select><!-- Corrected the 'for' attribute in label -->
+        </div>
+        <div class="input-group">
+            <label for="temperature-1">Temperature 1:</label>
+            <input type="number" id="temperature-1" min="0" max="2" step="0.1" value="0">
+        </div>
+        <div class="input-group">
+            <label for="max-tokens-1">Max Tokens 1:</label>
+            <input type="number" id="max-tokens-1" min="1" max="4000" value="4000">
+        </div>
+        <div class="input-group">
+            <label for="model-type-2">Model Type 2:</label>
+            <select id="model-type-2"></select>
+        </div>
+        <div class="input-group">
+            <label for="model-name-2">Model Name 2:</label>
+            <select id="model-name-2"></select>
+        </div>
+        <div class="input-group">
+            <label for="temperature-2">Temperature 2:</label>
+            <input type="number" id="temperature-2" min="0" max="2" step="0.1" value="0">
+        </div>
+        <div class="input-group">
+            <label for="max-tokens-2">Max Tokens 2:</label>
+            <input type="number" id="max-tokens-2" min="1" max="4000" value="4000">
+        </div>
+        <button id="processButton">Process</button>
+        <div id="output"></div>
+        <div class="token-count">
+            <p>Input Tokens: <span id="input-tokens"></span></p>
+            <p>Output Tokens: <span id="output-tokens"></span></p>
+        </div>
+        <div id="questionsBox" style="display: none;">
+            <h3>Questions for the User</h3>
+            <div id="questionsList"></div>
+            <p id="timerPrompt"></p>
+            <textarea id="userResponse" rows="4" cols="50"></textarea>
+            <button id="submitResponseButton">Submit Response</button>
+        </div>
+    </div>
+</body>
+
+</html>
